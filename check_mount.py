@@ -152,7 +152,7 @@ class Mount(nagiosplugin.Resource):
         """
         Return all mount points matching the selection criteria.
         """
-        _log.info('obtaining mount list from findmnt(8)')
+        _log.debug('obtaining mount list from findmnt(8)')
         mount_data = self.get_mount_data()
         # If we have a list of paths, then we're checking that specific paths
         # exist.
@@ -188,7 +188,7 @@ class Mount(nagiosplugin.Resource):
                     _log.debug("mount {!r} counted".format(mount['target']))
                     mount_count += 1
             yield nagiosplugin.Metric(
-                'total', mount_count, min=0, context='mount'
+                'total mounts', mount_count, min=0, context='mount'
             )
 
 
@@ -271,7 +271,6 @@ def parse_args():
 @nagiosplugin.guarded
 def main():
     args = parse_args()
-    _log.debug(PLATFORM_OPTIONS)
     if args.path:
         contexts = [
             nagiosplugin.ScalarContext(path, args.warning, args.critical) for
