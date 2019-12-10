@@ -3,19 +3,43 @@
 # Copyright 2019 OARC Inc
 # Matthew Pounsett <matt@NimbusOps.com>
 # -----------------------------------------------------
+"""
+An Icinga/Nagios-compatible plugin for checking mount points.
+
+Example Usage
+-------------
+
+Insist on 15 mounts being present, and return WARNING or CRITICAL respectively
+if the number of mounts is above or below that number:
+
+check-mount -w15:15
+check-mount -c15:15
+
+Insist on a minimum of 3 and maximum of 5 mounts of type NFS and EXT4:
+
+check-mount -t nfs -t ext4 -w 3:5
+
+Make sure that three specific mounts are present.  This may be
+counterintuitive, but the warning range requires that there be precisely one
+of each.
+
+check-mount -p /home -p /var -p /opt -w1:1
+
+"""
 
 import argparse
 import inspect
 import logging
-import nagiosplugin
 import os
-import sys
 import platform
 import re
 import subprocess
+import sys
+
+import nagiosplugin
 
 __version__ = "1.0.0b1"
-_log = logging.getLogger('nagiosplugin')
+_LOG = logging.getLogger('nagiosplugin')
 
 IGNORE_TYPES = [
     'autofs',
@@ -65,39 +89,42 @@ PLATFORM_OPTIONS = PLATFORMS[
 
 class Mount(nagiosplugin.Resource):
     """
-    Domain model: Mount points
+    Domain model: Mount points.
 
     Determines if the requested mount points are present.  The `probe` method
     returns a list of all mounts which match the selection criteria.
     """
 
     def __init__(self, paths=None, types=None, mount_path='/sbin/mount'):
+        """Create a Mount object."""
         if paths and types:
-            raise(ValueError("paths and types cannot both be set"))
+            raise ValueError("paths and types cannot both be set")
 
         if paths is not None:
-            if type(paths) is str:
-                self.PATHS = [paths]
-            elif type(paths) is list:
-                self.PATHS = paths
+            if isinstance(paths, str):
+                self.paths = [paths]
+            elif isinstance(paths, list):
+                self.paths = paths
             else:
                 raise TypeError('paths must be a string or a list')
         else:
-            self.PATHS = paths
+            self.paths = paths
 
         if types is not None:
-            if type(types) is str:
-                self.TYPES = [types.lower()]
-            elif type(types) is list:
-                self.TYPES = [type.lower() for type in types]
+            if isinstance(types, str):
+                self.types = [types.lower()]
+            elif isinstance(types, list):
+                self.types = [type.lower() for type in types]
             else:
                 raise TypeError('types must be a string or a list')
         else:
-            self.TYPES = None
+            self.types = None
 
-        self.MOUNT_PATH = mount_path
+        self.mount_path = mount_path
 
-    def process_linux_mount(self, text):
+    @classmethod
+    def process_linux_mount(cls, text):
+        """Process a line of Linux-style mount output to a native structure."""
         fields = PLATFORM_OPTIONS['mount_fields']
         detail = {}
         items = text.split()
@@ -107,7 +134,9 @@ class Mount(nagiosplugin.Resource):
         detail['options'] = items[fields['options']]
         return detail
 
-    def process_bsd_mount(self, text):
+    @classmethod
+    def process_bsd_mount(cls, text):
+        """Process a line of BSD-style mount output into a native structure."""
         detail = {}
         result = re.search(PLATFORM_OPTIONS['mount_regex'], text)
         detail['target'] = result.group(1)
@@ -117,79 +146,92 @@ class Mount(nagiosplugin.Resource):
         detail['options'] = '({})'.format(', '.join(opts))
         return detail
 
-    def process_mount_data(self, text):
+    @classmethod
+    def process_mount_data(cls, text):
+        """
+        Process mount output into a native data structure.
+
+        This method takes  one or more lines of output from mount(8) as a
+        single string, splits it up into lines, and then passes those lines to
+        the appropriate processing function to retrieve a native data
+        structure.
+
+        Returns a list of dictionaries.
+        """
         results = []
         for line in text.decode().split(os.linesep):
             line = line.strip()
             if line == '':
                 continue
-            f = getattr(self, PLATFORM_OPTIONS['function'])
-            detail = f(line)
-            _log.debug("found mount: {!r}".format(detail))
+            func = getattr(Mount, PLATFORM_OPTIONS['function'])
+            detail = func(line)
+            _LOG.debug("found mount: %s", detail)
             results.append(detail)
         return results
 
     def get_mount_data(self):
+        """Shell out to run mount(8), return the processed output."""
         cmd = [
-            self.MOUNT_PATH,
+            self.mount_path,
         ]
         try:
             result = subprocess.Popen(cmd, stdout=subprocess.PIPE)
             output = result.communicate()[0]
-        except OSError as e:
-            _log.error("mount execution failed {err}".format(err=e))
+        except OSError as err:
+            _LOG.error("mount execution failed: %s", err)
             raise
-        except Exception as e:
-            _log.error("unknown error calling mount: {err}".format(err=e))
+        except Exception as err:
+            _LOG.error("unknown error calling mount: %s", err)
             raise
 
-        return self.process_mount_data(output)
+        return Mount.process_mount_data(output)
 
     def probe(self):
-        """
-        Return all mount points matching the selection criteria.
-        """
-        _log.debug('obtaining mount list from mount')
+        """Return all mount points matching the selection criteria."""
+        _LOG.debug('obtaining mount list from mount')
         mount_data = self.get_mount_data()
         # If we have a list of paths, then we're checking that specific paths
         # exist.
-        if self.PATHS:
+        if self.paths:
             targets = [mount['target'] for mount in mount_data]
-            for path in self.PATHS:
+            for path in self.paths:
                 if path in targets:
-                    _log.debug("mount {!r} present".format(path))
-                    yield(nagiosplugin.Metric(path, 1, context=path))
+                    _LOG.debug("mount %s present", path)
+                    yield nagiosplugin.Metric(path, 1, context=path)
                 else:
-                    _log.debug("mount {!r} missing".format(path))
-                    yield(nagiosplugin.Metric(path, 0, context=path))
+                    _LOG.debug("mount %s missing", path)
+                    yield nagiosplugin.Metric(path, 0, context=path)
         # Otherwise, we're just counting mounts
         else:
             mount_count = 0
             for mount in mount_data:
-                if self.TYPES and mount['fstype'] in self.TYPES:
-                    _log.debug("mount {!r} counted".format(mount['target']))
+                if self.types and mount['fstype'] in self.types:
+                    _LOG.debug("mount %s counted", mount['target'])
                     mount_count += 1
                 else:
-                    if self.TYPES and mount['fstype'] not in self.TYPES:
-                        _log.debug(
-                            "ignoring mount {!r}: not in user types list".
-                            format((mount['target'], mount['fstype']))
+                    if self.types and mount['fstype'] not in self.types:
+                        _LOG.debug(
+                            "ignoring mount %s: not in user types list",
+                            (mount['target'], mount['fstype'])
                         )
                         continue
                     if mount['fstype'] in IGNORE_TYPES:
-                        _log.debug(
-                            "ignoring mount {!r}: type in default ignore list".
-                            format((mount['target'], mount['fstype']))
+                        _LOG.debug(
+                            "ignoring mount %s: type in default ignore list",
+                            (mount['target'], mount['fstype'])
                         )
                         continue
-                    _log.debug("mount {!r} counted".format(mount['target']))
+                    _LOG.debug("mount %s counted", mount['target'])
                     mount_count += 1
             yield nagiosplugin.Metric(
                 'total mounts', mount_count, min=0, context='mount'
             )
 
 
-def parse_args(args=sys.argv[1:]):
+def parse_args(args=None):
+    """Parse cmdline arguments and return an argparse.Namespace object."""
+    args = args or sys.argv[1:]
+
     parser = argparse.ArgumentParser(
         description=inspect.cleandoc(
             """
@@ -267,6 +309,7 @@ def parse_args(args=sys.argv[1:]):
 
 @nagiosplugin.guarded
 def main():
+    """Run the check-mount script.  This is the main entrypoint."""
     args = parse_args()
     if args.path:
         contexts = [
