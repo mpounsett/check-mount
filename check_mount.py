@@ -11,6 +11,7 @@ import nagiosplugin
 import os
 import sys
 import platform
+import re
 import subprocess
 
 __version__ = "1.0.0b1"
@@ -46,11 +47,7 @@ PLATFORMS = {
     },
     'BSD': {
         'mount_path': '/sbin/mount',
-        'mount_fields': {
-            'target': 2,
-            'source': 0,
-            'options': 3,
-        },
+        'mount_regex': r"^(.+) on (.+) \((.*)\)$",
         'function': 'process_bsd_mount',
     },
 }
@@ -111,12 +108,11 @@ class Mount(nagiosplugin.Resource):
         return detail
 
     def process_bsd_mount(self, text):
-        fields = PLATFORM_OPTIONS['mount_fields']
         detail = {}
-        items = text.split()
-        detail['target'] = items[fields['target']]
-        detail['source'] = items[fields['source']]
-        opts = items[fields['options']].strip('()').split(', ')
+        result = re.search(PLATFORM_OPTIONS['mount_regex'], text)
+        detail['target'] = result.group(1)
+        detail['source'] = result.group(2)
+        opts = result.group(3).split(', ')
         detail['fstype'] = opts.pop(0)
         detail['options'] = '({})'.format(', '.join(opts))
         return detail
