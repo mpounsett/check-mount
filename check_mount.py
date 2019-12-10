@@ -54,13 +54,15 @@ PLATFORMS = {
     },
 }
 
-PLATFORM = {
-    'Darwin': 'BSD',
-    'FreeBSD': 'BSD',
-    'Linux': 'Linux',
-}.get(platform.system())
-
-PLATFORM_OPTIONS = PLATFORMS[PLATFORM]
+# Map the platform.system() output to the key of the PLATFORMS dictionary
+# above
+PLATFORM_OPTIONS = PLATFORMS[
+    {
+        'Darwin': 'BSD',
+        'FreeBSD': 'BSD',
+        'Linux': 'Linux',
+    }.get(platform.system())
+]
 
 
 class Mount(nagiosplugin.Resource):
@@ -269,7 +271,6 @@ def parse_args():
 @nagiosplugin.guarded
 def main():
     args = parse_args()
-    _log.debug(PLATFORM)
     _log.debug(PLATFORM_OPTIONS)
     if args.path:
         contexts = [
