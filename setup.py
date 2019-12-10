@@ -33,8 +33,15 @@ setup(
     description="Nagios / Icinga plugin to check that mounts are present.",
     long_description=read('README.rst'),
     keywords=['Icinga', 'Nagios', 'monitoring'],
-    url="https://check-mount.readthedocs.io",
+    url="https://github.com/mpounsett/check-mount",
+    download_url='https://pypi.org/project/check-mount/',
+    project_urls={
+        'check-mount source':
+        'https://github.com/mpounsett/check-mount',
 
+        'check-mount issues':
+        'https://github.com/mpounsett/check-mount/issues',
+    },
     author="Matthew Pounsett",
     author_email="matt@conundrum.com",
     license="Apache Software License 2.0",
