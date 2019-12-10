@@ -9,6 +9,7 @@ import inspect
 import logging
 import nagiosplugin
 import os
+import sys
 import platform
 import subprocess
 
@@ -192,7 +193,7 @@ class Mount(nagiosplugin.Resource):
             )
 
 
-def parse_args():
+def parse_args(args=sys.argv[1:]):
     parser = argparse.ArgumentParser(
         description=inspect.cleandoc(
             """
@@ -254,7 +255,7 @@ def parse_args():
         default=0,
         help="Increase output verbosity (use up to 3 times).",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     # Do some basic tests
     if args.path and args.type:
