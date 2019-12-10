@@ -12,7 +12,7 @@ import os
 import platform
 import subprocess
 
-__version__ = "0.0.1"
+__version__ = "1.0.0b1"
 _log = logging.getLogger('nagiosplugin')
 
 IGNORE_TYPES = [
