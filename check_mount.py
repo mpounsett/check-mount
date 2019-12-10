@@ -153,7 +153,7 @@ class Mount(nagiosplugin.Resource):
         """
         Return all mount points matching the selection criteria.
         """
-        _log.debug('obtaining mount list from findmnt(8)')
+        _log.debug('obtaining mount list from mount')
         mount_data = self.get_mount_data()
         # If we have a list of paths, then we're checking that specific paths
         # exist.
@@ -263,7 +263,7 @@ def parse_args(args=sys.argv[1:]):
             "--path and --type cannot be specified together."
         )
     if not os.access(args.mount_path, os.X_OK):
-        parser.error('findmnt not found at {}'.format(args.findmnt_path))
+        parser.error('mount not found at {}'.format(args.mount_path))
 
     # all good.. return the results
     return args
