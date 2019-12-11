@@ -131,7 +131,7 @@ class Mount(nagiosplugin.Resource):
         detail['target'] = items[fields['target']]
         detail['source'] = items[fields['source']]
         detail['fstype'] = items[fields['fstype']]
-        detail['options'] = items[fields['options']]
+        detail['options'] = items[fields['options']].strip('()').split(',')
         return detail
 
     @classmethod
@@ -143,7 +143,7 @@ class Mount(nagiosplugin.Resource):
         detail['source'] = result.group(2)
         opts = result.group(3).split(', ')
         detail['fstype'] = opts.pop(0)
-        detail['options'] = '({})'.format(', '.join(opts))
+        detail['options'] = opts
         return detail
 
     @classmethod
