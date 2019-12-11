@@ -184,12 +184,13 @@ class Mount(nagiosplugin.Resource):
             _LOG.error("unknown error calling mount: %s", err)
             raise
 
-        return Mount.process_mount_data(output)
+        return output
 
     def probe(self):
         """Return all mount points matching the selection criteria."""
         _LOG.debug('obtaining mount list from mount')
-        mount_data = self.get_mount_data()
+        mount_data = Mount.process_mount_data(self.get_mount_data())
+
         # If we have a list of paths, then we're checking that specific paths
         # exist.
         if self.paths:
