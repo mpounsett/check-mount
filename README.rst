@@ -16,7 +16,7 @@ present.
 Usage
 =====
 
-.. code-block:: none
+.. code:: text
 
    usage: check_mount [-h] [-w RANGE] [-c RANGE] [-p PATH] [-t TYPE] [-M PATH]
                       [-v]
