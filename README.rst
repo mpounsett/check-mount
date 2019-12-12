@@ -71,7 +71,7 @@ of each)::
 
    check_mount -t NFS -t AFS -w 2:2
 
-By default, **check_mount** ignores several pseudo-filessytem types.  Ignoring
+By default, **check_mount** ignores several filessytem pseudo-types.  Ignoring
 these can be overridden by specifying them, along with any other types you
 would like to check, on the command line.  Filesystem types ignored by default
 are::
