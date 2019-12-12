@@ -4,4 +4,7 @@ check_mount Documentation
 
 This documentation covers **check_mount** |version|.
 
-.. include:: ../README.rst
+.. toctree::
+   :maxdepth: 2
+
+   readme
