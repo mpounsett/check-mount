@@ -1,6 +1,5 @@
-===========
-check_mount
-===========
+.. toctree::
+   :maxdepth: 2
 
 About
 =====
@@ -76,9 +75,9 @@ these can be overridden by specifying them, along with any other types you
 would like to check, on the command line.  Filesystem types ignored by default
 are::
 
-    autofs      bpf         cgroup      cgroup2     debugfs     devpts
-    devtmpfs    hugetlbfs   mqueue      proc        pstore      securityfs
-    sysfs       tmpfs
+    autofs      bpf         cgroup      cgroup2     debugfs
+    devpts      devtmpfs    hugetlbfs   mqueue      proc
+    pstore      securityfs  sysfs       tmpfs
 
 Checking Specific Mount Points
 ------------------------------
