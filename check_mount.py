@@ -38,7 +38,7 @@ import sys
 
 import nagiosplugin
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 _LOG = logging.getLogger('nagiosplugin')
 
 IGNORE_TYPES = [
