@@ -50,7 +50,7 @@ from typing import Dict, List
 
 import nagiosplugin
 
-__version__ = "1.0.4a"
+__version__ = "1.1.0"
 _LOG = logging.getLogger('nagiosplugin')
 
 IGNORE_TYPES = [
