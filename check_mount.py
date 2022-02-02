@@ -84,6 +84,7 @@ class Mount(nagiosplugin.Resource):
     Determines if the requested mount points are present.  The `probe` method
     returns a list of all mounts which match the selection criteria.
     """
+
     name = 'Mount'
 
     def __init__(self,
@@ -140,16 +141,14 @@ class Mount(nagiosplugin.Resource):
             self.mount_path,
         ]
         try:
-            result = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-            output = result.communicate()[0]
+            with subprocess.Popen(cmd, stdout=subprocess.PIPE) as result:
+                return result.communicate()[0]
         except OSError as err:
             _LOG.error("mount execution failed: %s", err)
             raise
         except Exception as err:
             _LOG.error("unknown error calling mount: %s", err)
             raise
-
-        return output
 
     def probe(self):
         """Return all mount points matching the selection criteria."""
@@ -176,7 +175,10 @@ class Mount(nagiosplugin.Resource):
                     _LOG.debug("mount %s counted", mount['target'])
                     mount_count += 1
                 else:
-                    if self.types and mount['filesystem_type'] not in self.types:
+                    if (
+                        self.types
+                        and mount['filesystem_type'] not in self.types
+                    ):
                         _LOG.debug(
                             "ignoring mount %s: not in user types list",
                             (mount['target'], mount['filesystem_type'])
@@ -243,27 +245,31 @@ class LinuxMount(Mount):
         return detail
 
 
+# No need for more methods in a factory class
+# pylint: disable-next=too-few-public-methods
 class MountFactory:
-    """
-    Returns the appropriate Mount subclass for the platform.
-    """
+    """Returns the appropriate Mount subclass for the platform."""
 
     @staticmethod
     def get_mount_class(paths: List[str] = None,
                         types: List[str] = None,
                         mount_path: str = MOUNT_PATH) -> Mount:
-        # Map the platform.system() output to the key of the dictionary and
-        # return the matching Mount subclass
+        """
+        Return an instance of the appropriate Mount subclass.
+
+        Maps platform.system() to a dictionary of OS names mapped to Mount
+        subclasses.
+        """
         class_map = {
             'Darwin': BSDMount,
             'FreeBSD': BSDMount,
             'Linux': LinuxMount,
         }
+        os_name = platform.system()
         try:
-            new_class = class_map[platform.system()]
+            new_class = class_map[os_name]
         except KeyError:
-            raise NotImplementedError("Platform %s not supported" %
-                                      platform.system())
+            raise NotImplementedError(f"OS {os_name} not supported") from None
         return new_class(paths, types, mount_path)
 
 
@@ -320,9 +326,7 @@ def parse_args(args=None) -> argparse.Namespace:
         '-M', '--mount-path',
         default=MOUNT_PATH,
         metavar='PATH',
-        help=(
-            'Override the path to mount(8) [Default: {}]'.format(MOUNT_PATH)
-        ),
+        help=f"Override the path to mount(8) [Default: {MOUNT_PATH}]",
     )
     parser.add_argument(
         '-v', '--verbose',
@@ -338,7 +342,7 @@ def parse_args(args=None) -> argparse.Namespace:
             "--path and --type cannot be specified together."
         )
     if not os.access(args.mount_path, os.X_OK):
-        parser.error('mount not found at {}'.format(args.mount_path))
+        parser.error(f"mount not found at {args.mount_path}")
 
     # all good... return the results
     return args
