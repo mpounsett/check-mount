@@ -46,6 +46,8 @@ import re
 import subprocess
 import sys
 
+from typing import Dict, List
+
 import nagiosplugin
 
 __version__ = "1.0.4a"
@@ -68,33 +70,11 @@ IGNORE_TYPES = [
     'tmpfs',
 ]
 
-PLATFORMS = {
-    'Linux': {
-        'mount_path': '/bin/mount',
-        'mount_fields': {
-            'target': 2,
-            'source': 0,
-            'fstype': 4,
-            'options': 5,
-        },
-        'function': 'process_linux_mount',
-    },
-    'BSD': {
-        'mount_path': '/sbin/mount',
-        'mount_regex': r"^(.+) on (.+) \((.*)\)$",
-        'function': 'process_bsd_mount',
-    },
-}
-
-# Map the platform.system() output to the key of the PLATFORMS dictionary
-# above
-PLATFORM_OPTIONS = PLATFORMS[
-    {
-        'Darwin': 'BSD',
-        'FreeBSD': 'BSD',
-        'Linux': 'Linux',
-    }.get(platform.system())
-]
+MOUNT_PATH = {
+    'Darwin': '/sbin/mount',
+    'FreeBSD': '/sbin/mount',
+    'Linux': '/bin/mount',
+}.get(platform.system(), '/sbin/mount')
 
 
 class Mount(nagiosplugin.Resource):
@@ -104,57 +84,33 @@ class Mount(nagiosplugin.Resource):
     Determines if the requested mount points are present.  The `probe` method
     returns a list of all mounts which match the selection criteria.
     """
+    name = 'Mount'
 
-    def __init__(self, paths=None, types=None, mount_path='/sbin/mount'):
+    def __init__(self,
+                 paths: List[str] = None, types: List[str] = None,
+                 mount_path: str = MOUNT_PATH):
         """Create a Mount object."""
         if paths and types:
             raise ValueError("paths and types cannot both be set")
 
         if paths is not None:
-            if isinstance(paths, str):
-                self.paths = [paths]
-            elif isinstance(paths, list):
-                self.paths = paths
-            else:
-                raise TypeError('paths must be a string or a list')
-        else:
             self.paths = paths
+        else:
+            self.paths = []
 
         if types is not None:
-            if isinstance(types, str):
-                self.types = [types.lower()]
-            elif isinstance(types, list):
-                self.types = [type.lower() for type in types]
-            else:
-                raise TypeError('types must be a string or a list')
+            self.types = [mount_type.lower() for mount_type in types]
         else:
-            self.types = None
+            self.types = []
 
         self.mount_path = mount_path
 
     @classmethod
-    def process_linux_mount(cls, text):
-        """Process a line of Linux-style mount output to a native structure."""
-        fields = PLATFORM_OPTIONS['mount_fields']
-        detail = {}
-        items = text.split()
-        detail['target'] = items[fields['target']]
-        detail['source'] = items[fields['source']]
-        detail['fstype'] = items[fields['fstype']]
-        detail['options'] = items[fields['options']].strip('()').split(',')
-        return detail
-
-    @classmethod
-    def process_bsd_mount(cls, text):
-        """Process a line of BSD-style mount output into a native structure."""
-        detail = {}
-        result = re.search(PLATFORM_OPTIONS['mount_regex'], text)
-        detail['target'] = result.group(1)
-        detail['source'] = result.group(2)
-        opts = result.group(3).split(', ')
-        detail['fstype'] = opts.pop(0)
-        detail['options'] = opts
-        return detail
+    def process_mount_line(cls, text) -> Dict:
+        """Abstract method that should be replaced by subclassing."""
+        raise NotImplementedError(
+            "Mount must be subclassed and process_mount_line overridden"
+        )
 
     @classmethod
     def process_mount_data(cls, text):
@@ -173,8 +129,7 @@ class Mount(nagiosplugin.Resource):
             line = line.strip()
             if line == '':
                 continue
-            func = getattr(Mount, PLATFORM_OPTIONS['function'])
-            detail = func(line)
+            detail = cls.process_mount_line(line)
             _LOG.debug("found mount: %s", detail)
             results.append(detail)
         return results
@@ -199,7 +154,8 @@ class Mount(nagiosplugin.Resource):
     def probe(self):
         """Return all mount points matching the selection criteria."""
         _LOG.debug('obtaining mount list from mount')
-        mount_data = Mount.process_mount_data(self.get_mount_data())
+        mount_class = MountFactory.get_mount_class()
+        mount_data = mount_class.process_mount_data(self.get_mount_data())
 
         # If we have a list of paths, then we're checking that specific paths
         # exist.
@@ -216,20 +172,20 @@ class Mount(nagiosplugin.Resource):
         else:
             mount_count = 0
             for mount in mount_data:
-                if self.types and mount['fstype'] in self.types:
+                if self.types and mount['filesystem_type'] in self.types:
                     _LOG.debug("mount %s counted", mount['target'])
                     mount_count += 1
                 else:
-                    if self.types and mount['fstype'] not in self.types:
+                    if self.types and mount['filesystem_type'] not in self.types:
                         _LOG.debug(
                             "ignoring mount %s: not in user types list",
-                            (mount['target'], mount['fstype'])
+                            (mount['target'], mount['filesystem_type'])
                         )
                         continue
-                    if mount['fstype'] in IGNORE_TYPES:
+                    if mount['filesystem_type'] in IGNORE_TYPES:
                         _LOG.debug(
                             "ignoring mount %s: type in default ignore list",
-                            (mount['target'], mount['fstype'])
+                            (mount['target'], mount['filesystem_type'])
                         )
                         continue
                     _LOG.debug("mount %s counted", mount['target'])
@@ -239,7 +195,79 @@ class Mount(nagiosplugin.Resource):
             )
 
 
-def parse_args(args=None):
+class BSDMount(Mount):
+    """
+    Domain model: Mount points.
+
+    Determines if the requested mount points are present.  The `probe` method
+    returns a list of all mounts which match the selection criteria.
+    """
+
+    @classmethod
+    def process_mount_line(cls, text) -> Dict:
+        """Process a line of BSD-style mount output into a native structure."""
+        detail = {}
+        mount_regex = r"^(.+) on (.+) \((.*)\)$"
+        result = re.search(mount_regex, text)
+        if result is not None:
+            detail['source'] = result.group(1)
+            detail['target'] = result.group(2)
+            opts = result.group(3).split(', ')
+            detail['filesystem_type'] = opts.pop(0)
+            detail['options'] = opts
+        _LOG.debug("Got mount info: %s", detail)
+        return detail
+
+
+class LinuxMount(Mount):
+    """
+    Domain model: Mount points.
+
+    Determines if the requested mount points are present.  The `probe` method
+    returns a list of all mounts which match the selection criteria.
+    """
+
+    @classmethod
+    def process_mount_line(cls, text) -> Dict:
+        """Process a line of Linux-style mount output into a dict."""
+        detail = {}
+        mount_regex = r"^(.+) on (.+) type (.+) \((.*)\)$"
+        result = re.search(mount_regex, text)
+        if result is not None:
+            detail['source'] = result.group(1)
+            detail['target'] = result.group(2)
+            detail['filesystem_type'] = result.group(3)
+            opts = result.group(4).split(', ')
+            detail['options'] = opts
+        _LOG.debug("Got mount info: %s", detail)
+        return detail
+
+
+class MountFactory:
+    """
+    Returns the appropriate Mount subclass for the platform.
+    """
+
+    @staticmethod
+    def get_mount_class(paths: List[str] = None,
+                        types: List[str] = None,
+                        mount_path: str = MOUNT_PATH) -> Mount:
+        # Map the platform.system() output to the key of the dictionary and
+        # return the matching Mount subclass
+        class_map = {
+            'Darwin': BSDMount,
+            'FreeBSD': BSDMount,
+            'Linux': LinuxMount,
+        }
+        try:
+            new_class = class_map[platform.system()]
+        except KeyError:
+            raise NotImplementedError("Platform %s not supported" %
+                                      platform.system())
+        return new_class(paths, types, mount_path)
+
+
+def parse_args(args=None) -> argparse.Namespace:
     """Parse cmdline arguments and return an argparse.Namespace object."""
     args = args or sys.argv[1:]
 
@@ -290,12 +318,10 @@ def parse_args(args=None):
     )
     parser.add_argument(
         '-M', '--mount-path',
-        default=PLATFORM_OPTIONS['mount_path'],
+        default=MOUNT_PATH,
         metavar='PATH',
         help=(
-            'Override the path to mount(8) [Default: {}]'.format(
-                PLATFORM_OPTIONS['mount_path']
-            )
+            'Override the path to mount(8) [Default: {}]'.format(MOUNT_PATH)
         ),
     )
     parser.add_argument(
@@ -314,7 +340,7 @@ def parse_args(args=None):
     if not os.access(args.mount_path, os.X_OK):
         parser.error('mount not found at {}'.format(args.mount_path))
 
-    # all good.. return the results
+    # all good... return the results
     return args
 
 
@@ -331,8 +357,7 @@ def main():
         contexts = [
             nagiosplugin.ScalarContext('mount', args.warning, args.critical)
         ]
-    check = nagiosplugin.Check(
-        Mount(args.path, args.type, args.mount_path),
-        *contexts
-    )
+    mount_class = MountFactory.get_mount_class(args.path, args.type,
+                                               args.mount_path)
+    check = nagiosplugin.Check(mount_class, *contexts)
     check.main(verbose=args.verbose)
